@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
-	<title>PHP Image Resize Test Page</title>
+	<title>WordPress Attachment Item Tag Generator</title>
 	<link rel="stylesheet" href="global.css" />
 </head>
 <body>
@@ -70,9 +70,9 @@ if (strtolower($_SERVER['REQUEST_METHOD']) == 'post') :
 	fclose($handle);
 	unlink($filename);
 
-	$domain = $_POST['domain'];
+	$domain = '!'.$_POST['domain'].'!i';
 
-	$messages = array();
+	$messages = $remap_search = $remap_replace = array();
 	$output = '';
 
 
@@ -99,13 +99,14 @@ if (strtolower($_SERVER['REQUEST_METHOD']) == 'post') :
 					$image = $images[1][$i];
 				
 					# Only process images for the given domain
-					if (strpos($image,'http') === 0 && strpos($image,$domain) === false) { $messages[] = 'Skipping image because it is not on '.$domain.' ['.$image.']'; continue; }
+					if (strpos($image,'http') === 0 && preg_match($domain, $image) === 0) { $messages[] = 'Skipping image because it doesn\'t match '.$domain.' ['.$image.']'; continue; }
 					// echo "\n\nimage $i: $image\n\n";
 					$contents = $images[0][$i];
 					// echo "contents $i: $contents\n\n";
 					# avoid dupes
 					if (!array_search($image, $complete)) {
 						$complete[] = $image;
+						$pathinfo = pathinfo($image);
 						/*
 							Initially had this to work off the link, which was risky and prone to some obvious bugs,
 							but the biggest issue is that the image path formatting would have to be exactly like WP.
@@ -115,7 +116,14 @@ if (strtolower($_SERVER['REQUEST_METHOD']) == 'post') :
 						*/
 						// $guid = get_tag_attr('a', 'href', $contents);
 						// if (!$guid || !preg_match('/(?:jpg|gif|png)$/i',$guid))
+						// $guid = $pathinfo['dirname'] . '/' . urlencode($pathinfo['basename']);
 						$guid = $image;
+
+						$image_link = get_tag_attr('a', 'href', $contents);
+						if ( $image_link && preg_match('/(?:jpg|gif|png|jpeg)$/i',$image_link) && preg_match($domain, $image_link) ) {
+							$remap_search[] = $image_link;
+							$remap_replace[] = $image;
+						}
 
 						$title = get_tag_attr('img', 'title', $contents);
 						if (!$title) $title = urldecode(urldecode(basename($image)));
@@ -153,12 +161,17 @@ if (strtolower($_SERVER['REQUEST_METHOD']) == 'post') :
 		
 		}
 
+		if ( !empty($remap_search) ) {
+			# Replace images
+			$html = str_replace($remap_search, $remap_replace, $html);
+		}
+		$html = preg_replace('!(?=</channel>\s*</rss>)!', $output, $html);
 	}
 
 	echo '<div class="success">Import complete!',
 		(count($messages) ? 'Useful messages: <ul><li>' . implode("</li><li>", $messages) . "</li></ul>" : ''),
 		'<p>Add this to your file prior to importing, before the ',htmlentities('</channel>'),' tag:</p></div>';
-	echo '<div><textarea rows="20" cols="100">', htmlentities($output), '</textarea></div>';
+	echo '<div><textarea rows="20" cols="100">', htmlentities($html), '</textarea></div>';
 
 endif;
 ?>
